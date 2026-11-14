@@ -9,6 +9,7 @@ import { Pager } from '../components/Pager'
 import { dayKey, daysBetween, fmtShort, WEEKDAYS_LONG } from '../lib/dates'
 import { buildPlan, exerciseHistory, isLogged, sessionStats, strengthSeries, suggestWorkout } from '../lib/gym'
 import { aiReady, getAi, readPlanWithAi } from '../lib/ai'
+import { cleanPlanText } from '../lib/cleanPlan'
 import { parsePlan } from '../lib/parsePlan'
 import { celebrate, pop, tick, toast } from '../lib/reward'
 import { compareSet, liftTrend } from '../lib/strength'
@@ -60,19 +61,34 @@ function Setup({ onCancel }: { onCancel?: () => void }) {
   const [draft, setDraft] = useState<{ plan: Workout[]; leftovers: string[] } | null>(null)
 
   const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<{ label: string; pct: number | null }>({ label: '', pct: null })
+  const [secs, setSecs] = useState(0)
+  const skip = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    if (!busy) return
+    setSecs(0)
+    const t = setInterval(() => setSecs((n) => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [busy])
 
   const read = async () => {
     setBusy(true)
+    // Links, images, hashtags and motivation lines never reach the reader.
+    const cleaned = cleanPlanText(text)
     let parsed: ReturnType<typeof parsePlan> | null = null
     const ai = getAi()
     if (aiReady(ai)) {
+      setStatus({ label: 'Starting…', pct: null })
+      const skipped = new Promise<null>((resolve) => (skip.current = () => resolve(null)))
       try {
-        parsed = await readPlanWithAi(text, ai)
+        parsed = await Promise.race([readPlanWithAi(cleaned, ai, setStatus), skipped])
       } catch (e) {
         toast(`AI failed (${(e as Error).message.slice(0, 60)}). Using built-in reader.`)
       }
     }
-    parsed ??= parsePlan(text, unit)
+    skip.current = null
+    parsed ??= parsePlan(cleaned, unit)
     setBusy(false)
     if (!parsed.workouts.length) return toast('No exercises found. Try one per line.')
     setDraft({ plan: buildPlan(parsed.workouts, days), leftovers: parsed.leftovers })
@@ -138,9 +154,42 @@ function Setup({ onCancel }: { onCancel?: () => void }) {
             </button>
           </div>
         </Card>
-        <Button className="mt-4" disabled={!text.trim() || busy} onClick={read}>
-          {busy ? 'Reading your plan…' : 'Build my plan'}
-        </Button>
+        {busy ? (
+          <Card className="mt-4 p-5" aria-live="polite">
+            <div className="flex items-baseline justify-between">
+              <p className="text-[17px] font-semibold">{status.label || 'Reading your plan…'}</p>
+              <p className="num text-[15px] text-ink-2">
+                {status.pct != null ? `${Math.round(status.pct * 100)}% · ` : ''}
+                {secs}s
+              </p>
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-fill">
+              {status.pct != null ? (
+                <motion.div
+                  className="h-full rounded-full bg-ink"
+                  animate={{ width: `${status.pct * 100}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              ) : (
+                <motion.div
+                  className="h-full w-1/3 rounded-full bg-ink"
+                  animate={{ x: ['-100%', '300%'] }}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              )}
+            </div>
+            {secs >= 20 && (
+              <p className="mt-3 text-[13px] text-ink-2">Taking long? A smaller model or the built-in reader is faster.</p>
+            )}
+            <Button look="soft" className="mt-4 h-12" onClick={() => skip.current?.()}>
+              Use built-in reader instead
+            </Button>
+          </Card>
+        ) : (
+          <Button className="mt-4" disabled={!text.trim()} onClick={read}>
+            Build my plan
+          </Button>
+        )}
       </>
     )
 

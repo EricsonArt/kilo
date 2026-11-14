@@ -1,10 +1,6 @@
 import { clear } from 'idb-keyval'
-import { ChevronRight } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import { importPhotos, logWeight, moveDay } from '../actions'
-import { deviceModelReady } from '../lib/localAi'
-import { AI_DEFAULTS, aiReady, getAi, readPlanWithAi, setAi, type Provider } from '../lib/ai'
-import { downloadDeviceModel, removeDeviceModel } from '../lib/localAi'
 import { exportBackup, importBackup } from '../lib/backup'
 import { setLang, useLang, type Lang } from '../lib/i18n'
 import { Header } from '../components/Header'
@@ -15,44 +11,13 @@ import { toast } from '../lib/reward'
 import { fromUnit, toUnit } from '../lib/units'
 import { emptyData, useStore } from '../store'
 import type { Goal, Unit } from '../types'
-import { Button, Card, NumField, Segmented, Sheet } from '../ui'
+import { Button, NumField, Segmented, Sheet } from '../ui'
+import { AiSettings } from './AiSettings'
+import { Action, Group, Note, Row } from './settingsParts'
 import { useUi } from '../uiStore'
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section>
-      <h2 className="px-5 pb-2 text-[13px] font-medium text-ink-2">{title}</h2>
-      <Card className="divide-y divide-line overflow-hidden">{children}</Card>
-    </section>
-  )
-}
-
-function Row({ label, children }: { label: string; children?: ReactNode }) {
-  return (
-    <div className="flex min-h-14 items-center justify-between gap-4 px-5 py-2">
-      <span className="text-[17px]">{label}</span>
-      {children}
-    </div>
-  )
-}
-
-function Action({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex min-h-14 w-full items-center justify-between px-5 text-left text-[17px] ${danger ? 'text-down' : ''}`}
-    >
-      {label}
-      {!danger && <ChevronRight size={18} className="text-ink-3" />}
-    </button>
-  )
-}
 
 const input = 'min-w-0 flex-1 text-right text-[15px] font-medium'
-
-function Note({ children }: { children: ReactNode }) {
-  return <p className="px-5 py-3 text-[13px] leading-snug text-ink-2">{children}</p>
-}
 
 export function SettingsTab() {
   const email = useAuth((s) => s.email)
@@ -67,10 +32,7 @@ export function SettingsTab() {
   const days = useStore((s) => s.days)
   const [pending, setPending] = useState<string | null>(null)
   const [span, setSpan] = useState<{ n: number | null; u: 'days' | 'months' | 'years' }>({ n: null, u: 'years' })
-  const [ai, setAiState] = useState(getAi)
   const [gid, setGid] = useState(getGoogleClientId)
-  const [dl, setDl] = useState<number | null>(null)
-  const [, bump] = useState(0)
 
   // Day 1 = the earliest day with a weight or a photo. It may be long before today.
   const day1 = useMemo(
@@ -91,13 +53,6 @@ export function SettingsTab() {
     else d.setFullYear(d.getFullYear() - n)
     setDay1(dayKey(d))
   }
-  const updateAi = (p: Partial<ReturnType<typeof getAi>>) => {
-    const next = { ...ai, ...p }
-    setAi(next)
-    setAiState(next)
-  }
-  const pickProvider = (provider: Provider) =>
-    updateAi({ provider, ...(provider === 'off' || provider === 'device' ? {} : AI_DEFAULTS[provider]) })
 
   const openGym = (gym: 'edit' | 'import') => useUi.setState({ tab: 'gym', gym })
 
@@ -249,100 +204,7 @@ export function SettingsTab() {
           <Action label={hasPlan ? 'Paste a new plan' : 'Set up your plan'} onClick={() => openGym('import')} />
         </Group>
 
-        <Group title="AI for your plan">
-          <div className="p-3">
-            <Segmented<Provider>
-              label="Provider"
-              value={ai.provider}
-              onChange={pickProvider}
-              options={[
-                { id: 'off', text: 'Off' },
-                { id: 'device', text: 'Phone' },
-                { id: 'gemini', text: 'Gemini' },
-                { id: 'custom', text: 'MiMo' },
-                { id: 'local', text: 'Local' },
-              ]}
-            />
-          </div>
-          {ai.provider === 'device' && (
-            <>
-              <Row label="On-phone model">
-                <span className="text-[15px] text-ink-2">
-                  {dl != null ? `${Math.round(dl * 100)}%` : deviceModelReady() ? 'Ready' : 'Not downloaded'}
-                </span>
-              </Row>
-              {deviceModelReady() ? (
-                <Action
-                  label="Remove model"
-                  danger
-                  onClick={async () => {
-                    await removeDeviceModel()
-                    bump((n) => n + 1)
-                  }}
-                />
-              ) : (
-                <Action
-                  label={dl != null ? 'Downloading…' : 'Download model (about 400 MB)'}
-                  onClick={async () => {
-                    if (dl != null) return
-                    setDl(0)
-                    try {
-                      await downloadDeviceModel(setDl)
-                      toast('Model ready', true)
-                    } catch (e) {
-                      toast(`Download failed: ${(e as Error).message.slice(0, 60)}`)
-                    }
-                    setDl(null)
-                  }}
-                />
-              )}
-            </>
-          )}
-          {ai.provider !== 'off' && ai.provider !== 'device' && ai.provider !== 'local' && (
-            <Row label="API key">
-              <input
-                type="password"
-                aria-label="API key"
-                autoComplete="off"
-                value={ai.key}
-                onChange={(e) => updateAi({ key: e.target.value.trim() })}
-                className={input}
-              />
-            </Row>
-          )}
-          {ai.provider !== 'off' && ai.provider !== 'device' && (
-            <Row label="Model">
-              <input aria-label="Model" value={ai.model} onChange={(e) => updateAi({ model: e.target.value.trim() })} className={input} />
-            </Row>
-          )}
-          {(ai.provider === 'custom' || ai.provider === 'local') && (
-            <Row label="Base URL">
-              <input aria-label="Base URL" value={ai.baseUrl} onChange={(e) => updateAi({ baseUrl: e.target.value.trim() })} className={input} />
-            </Row>
-          )}
-          {ai.provider !== 'off' && (
-            <Action
-              label="Test AI"
-              onClick={async () => {
-                if (!aiReady(ai)) return toast('Fill in the key first.')
-                toast('Testing…')
-                try {
-                  const r = await readPlanWithAi('Monday\nBench press 3x8 60kg', ai)
-                  toast(`AI works: ${r.workouts[0].exercises[0].name}`, true)
-                } catch (e) {
-                  toast(`AI failed: ${(e as Error).message.slice(0, 80)}`)
-                }
-              }}
-            />
-          )}
-          <Note>
-            {ai.provider === 'off'
-              ? 'Reads a pasted plan, in any language. Off = built-in reader.'
-              : ai.provider === 'device'
-                ? 'Runs fully on this phone, no key and no internet after the one-time download. Slower and less accurate than Gemini.'
-                : 'Key stays on this device and goes only to the provider you picked. Local = Ollama or LM Studio on your computer (the phone must reach it).'}
-          </Note>
-        </Group>
+        <AiSettings />
 
         <Group title="Account">
           <Row label="Google client ID">
