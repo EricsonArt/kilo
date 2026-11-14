@@ -1,13 +1,14 @@
+import { askDeviceModel, deviceModelReady } from './localAi'
 import type { ParsedPlan } from './parsePlan'
 
 // Optional AI reading of a pasted plan. The model only fills the plan fields;
 // it never designs any UI. Keys stay in this browser (localStorage) and are
 // sent only to the provider the user picked.
 
-export type Provider = 'off' | 'gemini' | 'custom' | 'local'
+export type Provider = 'off' | 'device' | 'gemini' | 'custom' | 'local'
 export type AiConfig = { provider: Provider; key: string; model: string; baseUrl: string }
 
-export const AI_DEFAULTS: Record<Exclude<Provider, 'off'>, Pick<AiConfig, 'model' | 'baseUrl'>> = {
+export const AI_DEFAULTS: Record<Exclude<Provider, 'off' | 'device'>, Pick<AiConfig, 'model' | 'baseUrl'>> = {
   gemini: { model: 'gemini-2.5-flash', baseUrl: '' },
   custom: { model: 'mimo-v2-flash', baseUrl: 'https://api.xiaomimimo.com/v1' },
   local: { model: 'llama3.2', baseUrl: 'http://localhost:11434/v1' },
@@ -27,7 +28,9 @@ export function getAi(): AiConfig {
 export const setAi = (c: AiConfig) => localStorage.setItem(KEY, JSON.stringify(c))
 
 export const aiReady = (c: AiConfig) =>
-  c.provider === 'gemini'
+  c.provider === 'device'
+    ? deviceModelReady()
+    : c.provider === 'gemini'
     ? !!c.key
     : c.provider === 'custom'
       ? !!c.key && !!c.baseUrl
@@ -90,7 +93,9 @@ export async function readPlanWithAi(text: string, c: AiConfig): Promise<ParsedP
   const timer = setTimeout(() => ctl.abort(), 60_000)
   try {
     let out: string
-    if (c.provider === 'gemini') {
+    if (c.provider === 'device') {
+      out = await askDeviceModel(PROMPT + text)
+    } else if (c.provider === 'gemini') {
       const model = c.model || AI_DEFAULTS.gemini.model
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,

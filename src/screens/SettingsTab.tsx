@@ -2,7 +2,9 @@ import { clear } from 'idb-keyval'
 import { ChevronRight } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { importPhotos, logWeight, moveDay } from '../actions'
+import { deviceModelReady } from '../lib/localAi'
 import { AI_DEFAULTS, aiReady, getAi, readPlanWithAi, setAi, type Provider } from '../lib/ai'
+import { downloadDeviceModel, removeDeviceModel } from '../lib/localAi'
 import { exportBackup, importBackup } from '../lib/backup'
 import { setLang, useLang, type Lang } from '../lib/i18n'
 import { Header } from '../components/Header'
@@ -67,6 +69,8 @@ export function SettingsTab() {
   const [span, setSpan] = useState<{ n: number | null; u: 'days' | 'months' | 'years' }>({ n: null, u: 'years' })
   const [ai, setAiState] = useState(getAi)
   const [gid, setGid] = useState(getGoogleClientId)
+  const [dl, setDl] = useState<number | null>(null)
+  const [, bump] = useState(0)
 
   // Day 1 = the earliest day with a weight or a photo. It may be long before today.
   const day1 = useMemo(
@@ -93,7 +97,7 @@ export function SettingsTab() {
     setAiState(next)
   }
   const pickProvider = (provider: Provider) =>
-    updateAi({ provider, ...(provider === 'off' ? {} : AI_DEFAULTS[provider]) })
+    updateAi({ provider, ...(provider === 'off' || provider === 'device' ? {} : AI_DEFAULTS[provider]) })
 
   const openGym = (gym: 'edit' | 'import') => useUi.setState({ tab: 'gym', gym })
 
@@ -253,13 +257,48 @@ export function SettingsTab() {
               onChange={pickProvider}
               options={[
                 { id: 'off', text: 'Off' },
+                { id: 'device', text: 'Phone' },
                 { id: 'gemini', text: 'Gemini' },
                 { id: 'custom', text: 'MiMo' },
                 { id: 'local', text: 'Local' },
               ]}
             />
           </div>
-          {ai.provider !== 'off' && ai.provider !== 'local' && (
+          {ai.provider === 'device' && (
+            <>
+              <Row label="On-phone model">
+                <span className="text-[15px] text-ink-2">
+                  {dl != null ? `${Math.round(dl * 100)}%` : deviceModelReady() ? 'Ready' : 'Not downloaded'}
+                </span>
+              </Row>
+              {deviceModelReady() ? (
+                <Action
+                  label="Remove model"
+                  danger
+                  onClick={async () => {
+                    await removeDeviceModel()
+                    bump((n) => n + 1)
+                  }}
+                />
+              ) : (
+                <Action
+                  label={dl != null ? 'Downloading…' : 'Download model (about 400 MB)'}
+                  onClick={async () => {
+                    if (dl != null) return
+                    setDl(0)
+                    try {
+                      await downloadDeviceModel(setDl)
+                      toast('Model ready', true)
+                    } catch (e) {
+                      toast(`Download failed: ${(e as Error).message.slice(0, 60)}`)
+                    }
+                    setDl(null)
+                  }}
+                />
+              )}
+            </>
+          )}
+          {ai.provider !== 'off' && ai.provider !== 'device' && ai.provider !== 'local' && (
             <Row label="API key">
               <input
                 type="password"
@@ -271,7 +310,7 @@ export function SettingsTab() {
               />
             </Row>
           )}
-          {ai.provider !== 'off' && (
+          {ai.provider !== 'off' && ai.provider !== 'device' && (
             <Row label="Model">
               <input aria-label="Model" value={ai.model} onChange={(e) => updateAi({ model: e.target.value.trim() })} className={input} />
             </Row>
@@ -299,7 +338,9 @@ export function SettingsTab() {
           <Note>
             {ai.provider === 'off'
               ? 'Reads a pasted plan, in any language. Off = built-in reader.'
-              : 'Key stays on this device and goes only to the provider you picked. Local = Ollama or LM Studio on your computer (the phone must reach it).'}
+              : ai.provider === 'device'
+                ? 'Runs fully on this phone, no key and no internet after the one-time download. Slower and less accurate than Gemini.'
+                : 'Key stays on this device and goes only to the provider you picked. Local = Ollama or LM Studio on your computer (the phone must reach it).'}
           </Note>
         </Group>
 
