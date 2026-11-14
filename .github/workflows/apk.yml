@@ -13,7 +13,17 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
       - run: npm ci && npm run build && npx cap sync android
-      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      # One signing key for every build, kept in the Actions cache (never committed),
+      # so each new APK installs over the previous one.
+      - uses: actions/cache@v4
+        with:
+          path: android/app/kilo.keystore
+          key: kilo-keystore-v1
+      - run: |
+          [ -f android/app/kilo.keystore ] || keytool -genkeypair -keystore android/app/kilo.keystore -storepass "$KILO_PASS" -keypass "$KILO_PASS" -alias kilo -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=Kilo"
+        env: { KILO_PASS: "kilo-build-pass" }
+      - env: { KILO_PASS: "kilo-build-pass", VERSION_CODE: "${{ github.run_number }}" }
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
       - run: cp android/app/build/outputs/apk/debug/app-debug.apk kilo.apk
       - env: { GH_TOKEN: "${{ github.token }}" }
         run: |

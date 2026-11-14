@@ -3,3 +3,4 @@ dist
 .vitest
 .swarm
 .claude-flow
+android/app/kilo.keystore

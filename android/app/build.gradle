@@ -7,7 +7,7 @@ android {
         applicationId "com.kilo.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode (System.getenv("VERSION_CODE") ?: "1").toInteger()
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -16,7 +16,29 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        kilo {
+            storeFile file("kilo.keystore")
+            storePassword "kilo123456"
+            keyAlias "kilo"
+            keyPassword "kilo123456"
+        }
+    }
+    signingConfigs {
+        kilo {
+            storeFile file("kilo.keystore")
+            storePassword System.getenv("KILO_PASS")
+            keyAlias "kilo"
+            keyPassword System.getenv("KILO_PASS")
+        }
+    }
     buildTypes {
+        debug {
+            if (System.getenv("KILO_PASS")) signingConfig signingConfigs.kilo
+        }
+        debug {
+            signingConfig signingConfigs.kilo
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
