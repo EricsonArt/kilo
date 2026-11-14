@@ -1,0 +1,6 @@
+{
+  "appId": "com.kilo.app",
+  "appName": "Kilo",
+  "webDir": "dist",
+  "server": { "androidScheme": "http", "cleartext": true }
+}
