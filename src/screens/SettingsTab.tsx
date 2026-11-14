@@ -2,7 +2,7 @@ import { clear } from 'idb-keyval'
 import { ChevronRight } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { importPhotos, logWeight, moveDay } from '../actions'
-import { AI_DEFAULTS, getAi, setAi, type Provider } from '../lib/ai'
+import { AI_DEFAULTS, aiReady, getAi, readPlanWithAi, setAi, type Provider } from '../lib/ai'
 import { setLang, useLang, type Lang } from '../lib/i18n'
 import { Header } from '../components/Header'
 import { getGoogleClientId, setGoogleClientId, signOut, useAuth } from '../lib/auth'
@@ -291,6 +291,21 @@ export function SettingsTab() {
             <Row label="Base URL">
               <input aria-label="Base URL" value={ai.baseUrl} onChange={(e) => updateAi({ baseUrl: e.target.value.trim() })} className={input} />
             </Row>
+          )}
+          {ai.provider !== 'off' && (
+            <Action
+              label="Test AI"
+              onClick={async () => {
+                if (!aiReady(ai)) return toast('Fill in the key first.')
+                toast('Testing…')
+                try {
+                  const r = await readPlanWithAi('Monday\nBench press 3x8 60kg', ai)
+                  toast(`AI works: ${r.workouts[0].exercises[0].name}`, true)
+                } catch (e) {
+                  toast(`AI failed: ${(e as Error).message.slice(0, 80)}`)
+                }
+              }}
+            />
           )}
           <Note>
             {ai.provider === 'off'
