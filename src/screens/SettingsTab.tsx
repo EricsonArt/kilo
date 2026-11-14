@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { importPhotos, logWeight, moveDay } from '../actions'
 import { AI_DEFAULTS, aiReady, getAi, readPlanWithAi, setAi, type Provider } from '../lib/ai'
+import { exportBackup, importBackup } from '../lib/backup'
 import { setLang, useLang, type Lang } from '../lib/i18n'
 import { Header } from '../components/Header'
 import { getGoogleClientId, setGoogleClientId, signOut, useAuth } from '../lib/auth'
@@ -49,18 +50,6 @@ const input = 'min-w-0 flex-1 text-right text-[15px] font-medium'
 
 function Note({ children }: { children: ReactNode }) {
   return <p className="px-5 py-3 text-[13px] leading-snug text-ink-2">{children}</p>
-}
-
-function exportData() {
-  const { goal, goalKg, unit, days, trainDays, plan, sessions } = useStore.getState()
-  const blob = new Blob([JSON.stringify({ goal, goalKg, unit, days, trainDays, plan, sessions }, null, 2)], {
-    type: 'application/json',
-  })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `kilo-${dayKey()}.json`
-  a.click()
-  URL.revokeObjectURL(a.href)
 }
 
 export function SettingsTab() {
@@ -341,7 +330,9 @@ export function SettingsTab() {
               toast('Sample data loaded')
             }}
           />
-          <Action label="Export my data" onClick={exportData} />
+          <Action label="Export my data" onClick={exportBackup} />
+          <Action label="Import backup" onClick={importBackup} />
+          <Note>To move your data from the website to the app: export here, send the file to your phone, then import it in the app.</Note>
           <Action label="Delete everything" danger onClick={() => setConfirm(true)} />
         </Group>
       </div>
