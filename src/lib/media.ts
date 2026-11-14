@@ -86,20 +86,23 @@ export function useMediaUrl(key: string | undefined) {
   return url
 }
 
-/** Open the phone's camera / photo picker. Resolves null if the user backs out. */
-export function pickFile(accept: string) {
-  return new Promise<File | null>((resolve) => {
+/** Open the phone's camera / photo picker. Resolves an empty list if the user backs out. */
+export function pickFiles(accept: string, multiple = false) {
+  return new Promise<File[]>((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = accept
+    input.multiple = multiple
     input.style.display = 'none'
-    const done = (f: File | null) => {
+    const done = (f: File[]) => {
       input.remove()
       resolve(f)
     }
-    input.onchange = () => done(input.files?.[0] ?? null)
-    input.addEventListener('cancel', () => done(null))
+    input.onchange = () => done([...(input.files ?? [])])
+    input.addEventListener('cancel', () => done([]))
     document.body.appendChild(input)
     input.click()
   })
 }
+
+export const pickFile = async (accept: string) => (await pickFiles(accept))[0] ?? null

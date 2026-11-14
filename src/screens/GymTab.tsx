@@ -8,6 +8,7 @@ import { MonthCalendar } from '../components/MonthCalendar'
 import { Pager } from '../components/Pager'
 import { dayKey, daysBetween, fmtShort, WEEKDAYS_LONG } from '../lib/dates'
 import { buildPlan, exerciseHistory, isLogged, sessionStats, strengthSeries, suggestWorkout } from '../lib/gym'
+import { aiReady, getAi, readPlanWithAi } from '../lib/ai'
 import { parsePlan } from '../lib/parsePlan'
 import { celebrate, pop, tick, toast } from '../lib/reward'
 import { compareSet, liftTrend } from '../lib/strength'
@@ -58,10 +59,23 @@ function Setup({ onCancel }: { onCancel?: () => void }) {
   const [text, setText] = useState('')
   const [draft, setDraft] = useState<{ plan: Workout[]; leftovers: string[] } | null>(null)
 
-  const read = () => {
-    const { workouts, leftovers } = parsePlan(text, unit)
-    if (!workouts.length) return toast('No exercises found. Try one per line.')
-    setDraft({ plan: buildPlan(workouts, days), leftovers })
+  const [busy, setBusy] = useState(false)
+
+  const read = async () => {
+    setBusy(true)
+    let parsed: ReturnType<typeof parsePlan> | null = null
+    const ai = getAi()
+    if (aiReady(ai)) {
+      try {
+        parsed = await readPlanWithAi(text, ai)
+      } catch (e) {
+        toast(`AI failed (${(e as Error).message.slice(0, 60)}). Using built-in reader.`)
+      }
+    }
+    parsed ??= parsePlan(text, unit)
+    setBusy(false)
+    if (!parsed.workouts.length) return toast('No exercises found. Try one per line.')
+    setDraft({ plan: buildPlan(parsed.workouts, days), leftovers: parsed.leftovers })
     setStep('check')
   }
 
@@ -124,8 +138,8 @@ function Setup({ onCancel }: { onCancel?: () => void }) {
             </button>
           </div>
         </Card>
-        <Button className="mt-4" disabled={!text.trim()} onClick={read}>
-          Build my plan
+        <Button className="mt-4" disabled={!text.trim() || busy} onClick={read}>
+          {busy ? 'Reading your plan…' : 'Build my plan'}
         </Button>
       </>
     )

@@ -1,8 +1,11 @@
 import { clear } from 'idb-keyval'
 import { ChevronRight } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { importPhotos, logWeight, moveDay } from '../actions'
+import { AI_DEFAULTS, getAi, setAi, type Provider } from '../lib/ai'
+import { setLang, useLang, type Lang } from '../lib/i18n'
 import { Header } from '../components/Header'
-import { signOut, useAuth } from '../lib/auth'
+import { getGoogleClientId, setGoogleClientId, signOut, useAuth } from '../lib/auth'
 import { dayKey, WEEKDAYS_LONG } from '../lib/dates'
 import { loadDemo } from '../lib/demo'
 import { toast } from '../lib/reward'
@@ -42,6 +45,12 @@ function Action({ label, onClick, danger }: { label: string; onClick: () => void
   )
 }
 
+const input = 'min-w-0 flex-1 text-right text-[15px] font-medium'
+
+function Note({ children }: { children: ReactNode }) {
+  return <p className="px-5 py-3 text-[13px] leading-snug text-ink-2">{children}</p>
+}
+
 function exportData() {
   const { goal, goalKg, unit, days, trainDays, plan, sessions } = useStore.getState()
   const blob = new Blob([JSON.stringify({ goal, goalKg, unit, days, trainDays, plan, sessions }, null, 2)], {
@@ -63,6 +72,39 @@ export function SettingsTab() {
   const hasPlan = useStore((s) => s.plan != null)
   const patch = useStore((s) => s.patch)
   const [confirm, setConfirm] = useState(false)
+  const lang = useLang((s) => s.lang)
+  const days = useStore((s) => s.days)
+  const [pending, setPending] = useState<string | null>(null)
+  const [span, setSpan] = useState<{ n: number | null; u: 'days' | 'months' | 'years' }>({ n: null, u: 'years' })
+  const [ai, setAiState] = useState(getAi)
+  const [gid, setGid] = useState(getGoogleClientId)
+
+  // Day 1 = the earliest day with a weight or a photo. It may be long before today.
+  const day1 = useMemo(
+    () => Object.keys(days).filter((k) => days[k].kg != null || days[k].media).sort()[0] as string | undefined,
+    [days],
+  )
+  const day1Date = day1 ?? pending ?? dayKey()
+  const setDay1 = (date: string) => {
+    if (!date || date > dayKey()) return
+    if (day1) moveDay(day1, date)
+    else setPending(date)
+  }
+  const applySpan = (n: number | null, u: 'days' | 'months' | 'years') => {
+    if (!n) return
+    const d = new Date()
+    if (u === 'days') d.setDate(d.getDate() - n)
+    else if (u === 'months') d.setMonth(d.getMonth() - n)
+    else d.setFullYear(d.getFullYear() - n)
+    setDay1(dayKey(d))
+  }
+  const updateAi = (p: Partial<ReturnType<typeof getAi>>) => {
+    const next = { ...ai, ...p }
+    setAi(next)
+    setAiState(next)
+  }
+  const pickProvider = (provider: Provider) =>
+    updateAi({ provider, ...(provider === 'off' ? {} : AI_DEFAULTS[provider]) })
 
   const openGym = (gym: 'edit' | 'import') => useUi.setState({ tab: 'gym', gym })
 
@@ -70,6 +112,84 @@ export function SettingsTab() {
     <>
       <Header title="Settings" />
       <div className="space-y-7">
+        <Group title="Language">
+          <div className="p-3">
+            <Segmented<Lang>
+              label="Language"
+              value={lang}
+              onChange={setLang}
+              options={[
+                { id: 'pl', text: 'Polski' },
+                { id: 'en', text: 'English' },
+              ]}
+            />
+          </div>
+        </Group>
+
+        <Group title="Start of your journey">
+          <Row label="Day 1 date">
+            <input
+              type="date"
+              aria-label="Day 1 date"
+              max={dayKey()}
+              value={day1Date}
+              onChange={(e) => setDay1(e.target.value)}
+              className="text-right text-[17px] font-semibold"
+            />
+          </Row>
+          <Row label="Day 1 weight">
+            <label className="flex items-baseline gap-1.5">
+              <NumField
+                decimal
+                fit
+                label="Day 1 weight"
+                placeholder="–"
+                value={days[day1Date]?.kg != null ? toUnit(days[day1Date].kg!, unit) : null}
+                format={(v) => v.toFixed(1)}
+                onCommit={(v) => logWeight(day1Date, v)}
+                className="text-right text-[17px] font-semibold"
+              />
+              <span className="text-[15px] text-ink-2">{unit}</span>
+            </label>
+          </Row>
+          <Row label="Training for">
+            <div className="flex items-center gap-2">
+              <NumField
+                fit
+                label="Training for"
+                placeholder="–"
+                value={span.n}
+                format={(v) => String(Math.round(v))}
+                onCommit={(v) => {
+                  setSpan({ ...span, n: v })
+                  applySpan(v, span.u)
+                }}
+                className="text-right text-[17px] font-semibold"
+              />
+              <select
+                aria-label="Training for"
+                value={span.u}
+                onChange={(e) => {
+                  const u = e.target.value as typeof span.u
+                  setSpan({ ...span, u })
+                  applySpan(span.n, u)
+                }}
+                className="rounded-full bg-fill px-3 py-1.5 text-[15px] font-medium"
+              >
+                <option value="days">days</option>
+                <option value="months">months</option>
+                <option value="years">years</option>
+              </select>
+            </div>
+          </Row>
+          <Note>Not training since today? Set when you really started. Day 1 moves to that date.</Note>
+          <Action label="Import photos" onClick={importPhotos} />
+          <Note>
+            Pick many photos at once. Kilo reads the date each one was taken and sorts them from newest to oldest, one
+            per day. The oldest becomes your Day 1 photo and the newest your latest. You can change any date later.
+          </Note>
+        </Group>
+
         <Group title="Goal">
           <div className="p-3">
             <Segmented<Goal>
@@ -136,8 +256,62 @@ export function SettingsTab() {
           <Action label={hasPlan ? 'Paste a new plan' : 'Set up your plan'} onClick={() => openGym('import')} />
         </Group>
 
+        <Group title="AI for your plan">
+          <div className="p-3">
+            <Segmented<Provider>
+              label="Provider"
+              value={ai.provider}
+              onChange={pickProvider}
+              options={[
+                { id: 'off', text: 'Off' },
+                { id: 'gemini', text: 'Gemini' },
+                { id: 'custom', text: 'MiMo' },
+                { id: 'local', text: 'Local' },
+              ]}
+            />
+          </div>
+          {ai.provider !== 'off' && ai.provider !== 'local' && (
+            <Row label="API key">
+              <input
+                type="password"
+                aria-label="API key"
+                autoComplete="off"
+                value={ai.key}
+                onChange={(e) => updateAi({ key: e.target.value.trim() })}
+                className={input}
+              />
+            </Row>
+          )}
+          {ai.provider !== 'off' && (
+            <Row label="Model">
+              <input aria-label="Model" value={ai.model} onChange={(e) => updateAi({ model: e.target.value.trim() })} className={input} />
+            </Row>
+          )}
+          {(ai.provider === 'custom' || ai.provider === 'local') && (
+            <Row label="Base URL">
+              <input aria-label="Base URL" value={ai.baseUrl} onChange={(e) => updateAi({ baseUrl: e.target.value.trim() })} className={input} />
+            </Row>
+          )}
+          <Note>
+            {ai.provider === 'off'
+              ? 'Reads a pasted plan, in any language. Off = built-in reader.'
+              : 'Key stays on this device and goes only to the provider you picked. Local = Ollama or LM Studio on your computer (the phone must reach it).'}
+          </Note>
+        </Group>
+
         <Group title="Account">
-          <Row label={email ?? ''}>
+          <Row label="Google client ID">
+            <input
+              aria-label="Google client ID"
+              value={gid}
+              onChange={(e) => {
+                setGid(e.target.value)
+                setGoogleClientId(e.target.value)
+              }}
+              className={input}
+            />
+          </Row>
+          <Row label={email === 'device' ? 'Guest' : (email ?? '')}>
             <span className="text-[13px] text-ink-2">This device</span>
           </Row>
           <Action label="Sign out" onClick={signOut} />

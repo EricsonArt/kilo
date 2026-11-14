@@ -1,6 +1,6 @@
 import { Dumbbell, SlidersHorizontal } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect } from 'react'
+import { Fragment, useEffect } from 'react'
 import { useStreak } from './components/Header'
 import { boot, useAuth } from './lib/auth'
 import { GymTab } from './screens/GymTab'
@@ -8,6 +8,7 @@ import { Onboarding } from './screens/Onboarding'
 import { SettingsTab } from './screens/SettingsTab'
 import { WeightTab } from './screens/WeightTab'
 import { Welcome } from './screens/Welcome'
+import { startTranslator, useLang } from './lib/i18n'
 import { useStore } from './store'
 import { ScaleIcon, spring, Toaster } from './ui'
 import { useUi, type Tab } from './uiStore'
@@ -16,16 +17,19 @@ export default function App() {
   const { email, ready } = useAuth()
   const onboarded = useStore((s) => s.onboarded)
 
+  const lang = useLang((s) => s.lang)
+
   useEffect(() => {
     boot()
+    startTranslator()
   }, [])
 
   if (!ready) return null
   return (
-    <>
+    <Fragment key={lang}>
       <Toaster />
       {!email ? <Welcome /> : !onboarded ? <Onboarding /> : <Shell />}
-    </>
+    </Fragment>
   )
 }
 

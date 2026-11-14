@@ -1,7 +1,7 @@
 import { Mail } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
-import { continueWithEmail, googleAvailable } from '../lib/auth'
+import { continueAsGuest, continueWithEmail, continueWithGoogle } from '../lib/auth'
 import { Button, Sheet } from '../ui'
 
 export function Logo({ size = 72 }: { size?: number }) {
@@ -27,7 +27,7 @@ function GoogleMark() {
 
 export function Welcome() {
   const [sheet, setSheet] = useState(false)
-  const [note, setNote] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -56,14 +56,24 @@ export function Welcome() {
       </motion.div>
 
       <div className="space-y-3">
-        <Button look="outline" onClick={() => (googleAvailable ? undefined : setNote(true))}>
+        <Button
+          look="outline"
+          onClick={async () => {
+            setNote(null)
+            const err = await continueWithGoogle()
+            if (err) setNote(err === 'no-client-id' ? 'Google sign-in needs a Google client ID. Add it in Settings → Account, or continue without an account.' : err)
+          }}
+        >
           <GoogleMark /> Continue with Google
         </Button>
         <Button onClick={() => setSheet(true)}>
           <Mail size={19} /> Continue with email
         </Button>
-        <p className={`pt-1 text-center text-[13px] text-ink-2 ${note ? '' : 'invisible'}`} aria-live="polite">
-          Google sign-in turns on with the cloud backend. Use email for now.
+        <Button look="soft" onClick={() => continueAsGuest()}>
+          Continue without account
+        </Button>
+        <p className="min-h-8 pt-1 text-center text-[13px] text-ink-2" aria-live="polite">
+          {note ?? 'Your data stays on this phone. No cloud, no sign-up.'}
         </p>
       </div>
 

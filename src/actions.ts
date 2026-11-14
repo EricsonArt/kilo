@@ -1,5 +1,6 @@
-import { dayKey } from './lib/dates'
-import { deleteMedia, pickFile, saveMedia } from './lib/media'
+import { dayKey, fmtShort } from './lib/dates'
+import { photoDate } from './lib/exif'
+import { deleteMedia, pickFile, pickFiles, saveMedia } from './lib/media'
 import { celebrate, pop, tick, toast } from './lib/reward'
 import { MILESTONES, streak } from './lib/streak'
 import { fmtWeight, fromUnit } from './lib/units'
@@ -60,10 +61,50 @@ export function logKcal(date: string, kcal: number | null) {
   else toast('Saved')
 }
 
-/** Open the camera or library and attach the result to a day. */
-export async function addPhoto(date: string) {
+/** Move everything logged on one day to another (weight, calories, photo). */
+export function moveDay(from: string, to: string) {
+  if (from === to || !to) return
+  const s = useStore.getState()
+  const src = s.days[from]
+  if (!src) return
+  const dest = s.days[to]
+  if (dest?.media && src.media) deleteMedia(dest.media)
+  s.logDay(to, { ...dest, ...src })
+  s.logDay(from, { kg: undefined, kcal: undefined, media: undefined })
+  toast(`Moved to ${fmtShort(to)}`)
+}
+
+/** Several photos at once. Each one is filed under the day it was taken, newest first. */
+export async function importPhotos() {
+  const files = await pickFiles('image/*,video/*', true)
+  if (!files.length) return
+  const dated = await Promise.all(files.map(async (f) => ({ f, date: await photoDate(f) })))
+  dated.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.f.lastModified - a.f.lastModified))
+  let added = 0
+  let skipped = 0
+  for (const { f, date } of dated) {
+    if (useStore.getState().days[date]?.media) {
+      skipped++ // one photo per day: the newest of that day wins
+      continue
+    }
+    try {
+      useStore.getState().logDay(date, { media: await saveMedia(f) })
+      added++
+    } catch {
+      skipped++
+    }
+  }
+  toast(`${added} added, sorted newest to oldest${skipped ? ` · ${skipped} skipped` : ''}`, added > 0)
+}
+
+/**
+ * Open the camera or library and attach the result to a day. With `auto` the
+ * day comes from the photo itself (its EXIF date), not from the slot.
+ */
+export async function addPhoto(slot: string, auto = false) {
   const file = await pickFile('image/*,video/*')
   if (!file) return
+  const date = auto ? await photoDate(file) : slot
   try {
     const s = useStore.getState()
     const first = photoDays(s.days).length === 0
@@ -72,7 +113,8 @@ export async function addPhoto(date: string) {
     const media = await saveMedia(file)
     s.logDay(date, { media })
     if (old) deleteMedia(old)
-    if (first) reward(before, 'Day 1 photo saved', 2)
+    if (auto && date !== slot) toast(`Dated ${fmtShort(date)}, the day it was taken`, true)
+    else if (first) reward(before, 'Day 1 photo saved', 2)
     else if (date === dayKey()) reward(before, 'Photo saved', 1)
     else toast('Saved')
   } catch {

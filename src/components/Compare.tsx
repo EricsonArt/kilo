@@ -1,9 +1,9 @@
-import { Camera, Play, Trash2, X } from 'lucide-react'
+import { CalendarDays, Camera, Play, Trash2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { addPhoto, removePhoto } from '../actions'
-import { dayKey, fmtLong, fmtShort } from '../lib/dates'
+import { addPhoto, moveDay, removePhoto } from '../actions'
+import { dayKey, fmtFull, fmtLong } from '../lib/dates'
 import { useMediaUrl } from '../lib/media'
 import { fmtDelta, fmtWeight } from '../lib/units'
 import { goalProgress, movedToward, weightStatus } from '../lib/weight'
@@ -37,12 +37,15 @@ export function PhotoTile({
   date,
   hint,
   locked = false,
+  auto = false,
   className = '',
 }: {
   date: string
   hint?: string
   /** Shown but not tappable (nothing to add here yet). */
   locked?: boolean
+  /** The photo sets its own date (EXIF) instead of using this slot's day. */
+  auto?: boolean
   className?: string
 }) {
   const stored = useStore((s) => s.days[date]?.media)
@@ -55,7 +58,7 @@ export function PhotoTile({
         whileTap={locked ? undefined : { scale: 0.97 }}
         transition={spring}
         disabled={locked}
-        onClick={() => (media ? setOpen(true) : addPhoto(date))}
+        onClick={() => (media ? setOpen(true) : addPhoto(date, auto))}
         aria-label={media ? `Open photo from ${fmtLong(date)}` : `Add a photo or video for ${fmtLong(date)}`}
         className={`relative grid aspect-[3/4] place-items-center overflow-hidden rounded-[20px] bg-fill text-ink-3 ${className}`}
       >
@@ -119,6 +122,21 @@ function Viewer({ date, onClose }: { date: string | null; onClose: () => void })
             >
               <Camera size={18} /> Replace
             </button>
+            <label className="relative flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-white/15 text-[15px] font-semibold text-white">
+              <CalendarDays size={18} /> Change date
+              <input
+                type="date"
+                aria-label="Change date"
+                max={dayKey()}
+                value={date}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  onClose()
+                  moveDay(date, e.target.value)
+                }}
+                className="absolute inset-0 h-full w-full opacity-0"
+              />
+            </label>
             <button
               aria-label="Delete photo"
               onClick={() => {
@@ -151,12 +169,13 @@ export function Compare({ bare = false }: { bare?: boolean }) {
 
   const points = useMemo(() => weightPoints(days), [days])
   const photos = useMemo(() => photoDays(days), [days])
-  const start = points[0]
   const now = points[points.length - 1]
 
   const firstPhoto = photos[0]
+  // Day 1 is the earliest day with a photo or a weight. It can be set in the past.
+  const day1 = [firstPhoto, points[0]?.date].filter(Boolean).sort()[0]
+  const start = day1 && days[day1]?.kg != null ? { date: day1, kg: days[day1].kg! } : points[0]
   const lastPhoto = photos.length > 1 ? photos[photos.length - 1] : undefined
-  const leftDate = firstPhoto ?? start?.date
   const rightDate = lastPhoto ?? now?.date
 
   const change = points.length > 1 ? now.kg - start.kg : null
@@ -173,12 +192,13 @@ export function Compare({ bare = false }: { bare?: boolean }) {
   const body = (
     <>
       <div className="relative grid grid-cols-2 gap-2">
-        <PhotoTile date={firstPhoto ?? today} hint="Day 1 photo" />
+        <PhotoTile date={firstPhoto ?? today} hint="Day 1 photo" auto />
         {/* The right slot opens once there is a Day 1 photo from an earlier day. */}
         <PhotoTile
           date={lastPhoto ?? today}
           hint={firstPhoto === today ? 'Next photo' : 'Today'}
           locked={!firstPhoto || (firstPhoto === today && !lastPhoto)}
+          auto
         />
         {change != null && (
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-card p-1 shadow-float">
@@ -188,8 +208,8 @@ export function Compare({ bare = false }: { bare?: boolean }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 px-2 pt-3 pb-1">
-        <Side label={leftDate && leftDate !== today ? fmtShort(leftDate) : 'Day 1'} kg={start?.kg} unit={unit} muted />
-        <Side label={!rightDate || rightDate === today ? 'Today' : fmtShort(rightDate)} kg={now?.kg} unit={unit} right />
+        <Side label={day1 && day1 !== today ? fmtFull(day1) : 'Day 1'} kg={start?.kg} unit={unit} muted />
+        <Side label={!rightDate || rightDate === today ? 'Today' : fmtFull(rightDate)} kg={now?.kg} unit={unit} right />
       </div>
 
       {progress != null && goalKg != null && (
