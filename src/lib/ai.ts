@@ -6,12 +6,13 @@ import type { ParsedPlan } from './parsePlan'
 // it never designs any UI. Keys stay in this browser (localStorage) and are
 // sent only to the provider the user picked.
 
-export type Provider = 'off' | 'device' | 'gemini' | 'custom' | 'local'
+export type Provider = 'off' | 'device' | 'claude' | 'gemini' | 'custom' | 'local'
 export type Cfg = { key: string; model: string; baseUrl: string; ok?: boolean; models?: string[] }
 export type AiConfig = { provider: Provider } & Cfg
 
 export const DEFAULTS: Record<Exclude<Provider, 'off'>, Pick<Cfg, 'model' | 'baseUrl'>> = {
   device: { model: 'medium', baseUrl: '' },
+  claude: { model: 'claude-sonnet-5-5', baseUrl: '' },
   gemini: { model: 'gemini-2.5-flash', baseUrl: '' },
   custom: { model: 'mimo-v2-flash', baseUrl: 'https://api.xiaomimimo.com/v1' },
   local: { model: 'llama3.2', baseUrl: 'http://localhost:11434/v1' },
@@ -62,7 +63,7 @@ export function getAi(): AiConfig {
 export const aiReady = (c: AiConfig) =>
   c.provider === 'device'
     ? deviceModelReady(asModelId(c.model))
-    : c.provider === 'gemini'
+    : c.provider === 'gemini' || c.provider === 'claude'
       ? !!c.key
       : c.provider === 'custom'
         ? !!c.key && !!c.baseUrl
@@ -78,6 +79,16 @@ export function providerStatus(p: Exclude<Provider, 'off'>): { ok: boolean; text
   if (c.ok) return { ok: true, text: c.models?.length ? `Connected · ${c.models.length} models` : 'Connected' }
   return { ok: false, text: 'Not checked' }
 }
+
+// Starter list for the Claude model picker, shown before the key is checked.
+export const CLAUDE_MODELS = ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-2']
+
+const CLAUDE_URL = 'https://api.anthropic.com/v1'
+const claudeHeaders = (key: string) => ({
+  'x-api-key': key,
+  'anthropic-version': '2023-06-01',
+  'anthropic-dangerous-direct-browser-access': 'true',
+})
 
 const PROMPT = `Extract the workout plan from the text. Ignore everything that is not a workout: links, motivation, notes, advertising, nutrition.
 Return ONLY JSON in this exact shape:
@@ -141,7 +152,11 @@ async function getJson(url: string, init: RequestInit) {
 }
 
 /** Models this provider offers to this key. Throws if the key or address is wrong. */
-export async function listModels(p: 'gemini' | 'custom' | 'local', c: Cfg): Promise<string[]> {
+export async function listModels(p: 'claude' | 'gemini' | 'custom' | 'local', c: Cfg): Promise<string[]> {
+  if (p === 'claude') {
+    const data = await getJson(`${CLAUDE_URL}/models?limit=100`, { headers: claudeHeaders(c.key) })
+    return (data.data ?? []).map((m: { id: string }) => m.id).filter((n: string) => n.startsWith('claude'))
+  }
   if (p === 'gemini') {
     const data = await getJson('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', {
       headers: { 'x-goog-api-key': c.key },
@@ -169,6 +184,20 @@ export async function readPlanWithAi(
     if (c.provider === 'device') {
       const expected = Math.max(150, text.split('\n').filter(Boolean).length * 22)
       out = await askDeviceModel(asModelId(c.model), PROMPT + text, expected, onStatus)
+    } else if (c.provider === 'claude') {
+      onStatus({ label: 'Asking Claude…', pct: null })
+      const data = await getJson(`${CLAUDE_URL}/messages`, {
+        method: 'POST',
+        signal: ctl.signal,
+        headers: { 'Content-Type': 'application/json', ...claudeHeaders(c.key) },
+        body: JSON.stringify({
+          model: c.model || DEFAULTS.claude.model,
+          max_tokens: 4096,
+          temperature: 0,
+          messages: [{ role: 'user', content: PROMPT + text }],
+        }),
+      })
+      out = (data?.content ?? []).map((b: { text?: string }) => b.text ?? '').join('')
     } else if (c.provider === 'gemini') {
       onStatus({ label: 'Asking Gemini…', pct: null })
       const model = c.model || DEFAULTS.gemini.model

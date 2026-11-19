@@ -2,6 +2,7 @@ import { Check } from 'lucide-react'
 import { useState } from 'react'
 import {
   aiReady,
+  CLAUDE_MODELS,
   getAi,
   getCfg,
   getStore,
@@ -27,6 +28,7 @@ const input = 'min-w-0 flex-1 text-right text-[15px] font-medium'
 
 const PROVIDERS: { id: Exclude<Provider, 'off'>; name: string }[] = [
   { id: 'device', name: 'On this phone' },
+  { id: 'claude', name: 'Claude' },
   { id: 'gemini', name: 'Gemini' },
   { id: 'custom', name: 'MiMo / other API' },
   { id: 'local', name: 'Local server' },
@@ -191,7 +193,7 @@ export function AiSettings() {
           )}
           <Action label={busy ? 'Checking…' : cfg.ok ? 'Check again' : 'Connect'} onClick={connect} />
           <Row label="Model">
-            {cfg.models?.length ? (
+            {cfg.models?.length || p === 'claude' ? (
               <select
                 aria-label="Model"
                 value={cfg.model}
@@ -201,7 +203,7 @@ export function AiSettings() {
                 }}
                 className="max-w-[60%] truncate rounded-full bg-fill px-3 py-1.5 text-[14px] font-medium"
               >
-                {cfg.models.map((m) => (
+                {(cfg.models?.length ? cfg.models : CLAUDE_MODELS).map((m) => (
                   <option key={m}>{m}</option>
                 ))}
               </select>
@@ -223,7 +225,9 @@ export function AiSettings() {
       <Note>
         {p === 'device'
           ? 'Runs fully on this phone. After one download it needs no key and no internet. Bigger models read messy plans better but are slower.'
-          : p
+          : p === 'claude'
+            ? 'Paste an API key from console.anthropic.com (a Claude chat or Claude Code subscription cannot be used inside apps). Sonnet 5.5 is the starter model. The key stays on this device and goes only to Anthropic.'
+            : p
             ? 'Connect checks your key and lists the models you can use. The key stays on this device and goes only to the provider you picked.'
             : 'Reads a pasted plan, in any language. Off = built-in reader.'}
       </Note>

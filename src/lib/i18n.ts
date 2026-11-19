@@ -169,6 +169,8 @@ const PL: Record<string, string> = {
   'Starting…': 'Start…',
   'Loading the model…': 'Wczytuję model…',
   'Asking Gemini…': 'Pytam Gemini…',
+  'Asking Claude…': 'Pytam Claude…',
+  'Paste an API key from console.anthropic.com (a Claude chat or Claude Code subscription cannot be used inside apps). Sonnet 5.5 is the starter model. The key stays on this device and goes only to Anthropic.': 'Wklej klucz API z console.anthropic.com (subskrypcja Claude lub Claude Code nie działa w aplikacjach). Sonnet 5.5 to model startowy. Klucz zostaje na tym urządzeniu i trafia tylko do Anthropic.',
   'Asking the AI…': 'Pytam AI…',
   'Taking long? A smaller model or the built-in reader is faster.': 'Trwa długo? Mniejszy model lub wbudowany czytnik jest szybszy.',
   'Use built-in reader instead': 'Użyj wbudowanego czytnika',
